@@ -128,6 +128,7 @@ const App: React.FC = () => {
 
   // Video state
   const [videoResult, setVideoResult] = useState<{ url: string; blob: Blob } | null>(null);
+  const [isShowingVideoResult, setIsShowingVideoResult] = useState(false);
   const [isExtendingVideo, setIsExtendingVideo] = useState(false);
   const [videoLastFrame, setVideoLastFrame] = useState<File | null>(null);
 
@@ -315,7 +316,11 @@ const App: React.FC = () => {
 
   }, [completedCrop, addImageToHistory]);
 
-  const handleGenerateVideo = useCallback(async (videoPrompt: string, baseImage?: File) => {
+  const handleGenerateVideo = useCallback(async (
+    videoPrompt: string, 
+    options?: { style: string; speed: string; duration: number }, 
+    baseImage?: File
+  ) => {
     const imageToProcess = baseImage || currentImage;
     if (!imageToProcess) return;
     
@@ -327,8 +332,10 @@ const App: React.FC = () => {
     setVideoLastFrame(null);
     
     try {
-        const videoBlob = await generateVideoFromImage(imageToProcess, videoPrompt);
+        const videoOptions = options ?? { style: 'smooth', speed: 'normal', duration: 4 };
+        const videoBlob = await generateVideoFromImage(imageToProcess, videoPrompt, videoOptions);
         setVideoResult({ url: URL.createObjectURL(videoBlob), blob: videoBlob });
+        setIsShowingVideoResult(true);
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred.');
     } finally {
@@ -337,13 +344,10 @@ const App: React.FC = () => {
   }, [currentImage]);
   
   const handleBackToEditor = useCallback(() => {
-    if (videoResult) {
-      URL.revokeObjectURL(videoResult.url);
-      setVideoResult(null);
-    }
+    setIsShowingVideoResult(false);
     setIsExtendingVideo(false);
     setVideoLastFrame(null);
-  }, [videoResult]);
+  }, []);
 
   const handleStartExtendVideo = useCallback(async () => {
     if (!videoResult) return;
@@ -353,10 +357,17 @@ const App: React.FC = () => {
       const frameFile = await extractLastFrame(videoResult.blob);
       setVideoLastFrame(frameFile);
       setIsExtendingVideo(true);
+      setIsShowingVideoResult(false); // Hide player to show extend panel
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not extract frame from video.');
     } finally {
       setIsLoading(false);
+    }
+  }, [videoResult]);
+
+  const handleShowVideo = useCallback(() => {
+    if (videoResult) {
+      setIsShowingVideoResult(true);
     }
   }, [videoResult]);
 
@@ -369,8 +380,15 @@ const App: React.FC = () => {
       setPrompt('');
       setEditHotspot(null);
       setDisplayHotspot(null);
-      handleBackToEditor();
-  }, [handleBackToEditor]);
+      // Clean up video state
+      if (videoResult) {
+          URL.revokeObjectURL(videoResult.url);
+          setVideoResult(null);
+      }
+      setIsShowingVideoResult(false);
+      setIsExtendingVideo(false);
+      setVideoLastFrame(null);
+  }, [videoResult]);
 
   const handleDownload = useCallback(() => {
       if (videoResult) {
@@ -458,15 +476,15 @@ const App: React.FC = () => {
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-6 animate-fade-in">
           <VideoExtendPanel 
             lastFrame={videoLastFrame}
-            onGenerate={(prompt) => handleGenerateVideo(prompt, videoLastFrame)}
-            onCancel={handleBackToEditor}
+            onGenerate={(prompt) => handleGenerateVideo(prompt, undefined, videoLastFrame)}
+            onCancel={() => setIsExtendingVideo(false)}
             isLoading={isLoading}
           />
         </div>
       );
     }
 
-    if (videoResult) {
+    if (isShowingVideoResult && videoResult) {
       return (
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-6 animate-fade-in">
           <h2 className="text-3xl font-bold text-gray-200">Video Generation Complete!</h2>
@@ -566,7 +584,7 @@ const App: React.FC = () => {
             {activeTab === 'crop' && <CropPanel onApplyCrop={handleApplyCrop} onSetAspect={setAspect} isLoading={isLoading} isCropping={!!completedCrop?.width && completedCrop.width > 0} />}
             {activeTab === 'adjust' && <AdjustmentPanel onApplyAdjustment={handleApplyAdjustment} isLoading={isLoading} isBatchMode={isBatchMode} onBatchApply={handleBatchApply} />}
             {activeTab === 'filters' && <FilterPanel onApplyFilter={handleApplyFilter} isLoading={isLoading} isBatchMode={isBatchMode} onBatchApply={handleBatchApply} />}
-            {activeTab === 'video' && <ImageToVideoPanel onGenerateVideo={handleGenerateVideo} isLoading={isLoading} />}
+            {activeTab === 'video' && <ImageToVideoPanel onGenerateVideo={(prompt, options) => handleGenerateVideo(prompt, options)} isLoading={isLoading} videoResult={videoResult} onStartExtend={handleStartExtendVideo} onShowVideo={handleShowVideo} />}
             {activeTab === 'reference' && <ReferencePanel onApplyReference={handleApplyReference} isLoading={isLoading} />}
             {activeTab === 'character' && <CharacterPanel baseImage={currentImage} onGenerateCharacter={handleGenerateCharacter} isLoading={isLoading} />}
         </div>

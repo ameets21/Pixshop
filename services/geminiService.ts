@@ -330,20 +330,37 @@ export const generateConsistentCharacterVariations = async (
  * Generates a video from an image using generative AI.
  * @param originalImage The source image file.
  * @param prompt The text prompt describing the desired motion.
+ * @param options An object containing style, speed, and duration for the video.
  * @returns A promise that resolves to the video Blob.
  */
 export const generateVideoFromImage = async (
     originalImage: File,
     prompt: string,
+    options: { style: string; speed: string; duration: number; }
 ): Promise<Blob> => {
-    console.log(`Starting video generation: ${prompt}`);
+    console.log(`Starting video generation with options:`, { prompt, ...options });
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
     const { inlineData } = await fileToPart(originalImage);
 
+    const fullPrompt = `You are a video generation AI. Your task is to animate the provided image based on the user's request and the specified parameters.
+
+User Request: "${prompt}"
+
+Animation Parameters:
+- Style: ${options.style}.
+- Speed: ${options.speed}.
+- Desired Duration: Approximately ${options.duration} seconds.
+
+Guidelines:
+- The animation should be realistic and high quality.
+- The final video should respect all the specified parameters.
+
+Output: Return ONLY the generated video. Do not return text.`;
+
     let operation = await ai.models.generateVideos({
         model: 'veo-2.0-generate-001',
-        prompt: prompt,
+        prompt: fullPrompt,
         image: {
             imageBytes: inlineData.data,
             mimeType: inlineData.mimeType,
