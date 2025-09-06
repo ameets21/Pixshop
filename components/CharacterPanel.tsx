@@ -7,14 +7,25 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { UploadIcon, XCircleIcon } from './icons';
 
 interface CharacterPanelProps {
-  baseImage: File;
+  baseImage: File | undefined;
   onGenerateCharacter: (images: File[], prompt: string) => void;
   isLoading: boolean;
 }
 
 const Thumbnail: React.FC<{ file: File; onRemove?: () => void }> = ({ file, onRemove }) => {
-    const objectUrl = useMemo(() => URL.createObjectURL(file), [file]);
-    useEffect(() => () => URL.revokeObjectURL(objectUrl), [objectUrl]);
+    const [objectUrl, setObjectUrl] = useState('');
+
+    useEffect(() => {
+        if (file) {
+            const url = URL.createObjectURL(file);
+            setObjectUrl(url);
+            return () => URL.revokeObjectURL(url);
+        }
+    }, [file]);
+
+    if (!objectUrl) {
+        return <div className="w-full aspect-square bg-gray-900/50 rounded-lg animate-pulse" />;
+    }
 
     return (
         <div className="relative w-full aspect-square bg-gray-900/50 rounded-lg overflow-hidden group">
@@ -40,7 +51,9 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({ baseImage, onGenerateCh
   const [prompt, setPrompt] = useState('');
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  const totalImages = [baseImage, ...additionalImages];
+  const totalImages = useMemo(() => (
+    baseImage ? [baseImage, ...additionalImages] : additionalImages
+  ), [baseImage, additionalImages]);
 
   const handleFileChange = (files: FileList | null) => {
     if (files) {
@@ -66,7 +79,7 @@ const CharacterPanel: React.FC<CharacterPanelProps> = ({ baseImage, onGenerateCh
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-        <Thumbnail file={baseImage} />
+        {baseImage && <Thumbnail file={baseImage} />}
         {additionalImages.map((file, index) => (
             <Thumbnail key={index} file={file} onRemove={() => removeImage(index)} />
         ))}

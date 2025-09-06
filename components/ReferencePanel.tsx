@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UploadIcon } from './icons';
 
 export interface ReferenceSettings {
@@ -29,20 +29,17 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({ onApplyReference, isLoa
   const [negativePrompt, setNegativePrompt] = useState('');
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  const referenceImageUrl = useMemo(() => {
-    if (referenceImage) {
-      return URL.createObjectURL(referenceImage);
-    }
-    return null;
-  }, [referenceImage]);
-  
+  const [referenceImageUrl, setReferenceImageUrl] = useState<string | null>(null);
+
   useEffect(() => {
-    return () => {
-      if (referenceImageUrl) {
-        URL.revokeObjectURL(referenceImageUrl);
-      }
-    };
-  }, [referenceImageUrl]);
+    if (referenceImage) {
+        const url = URL.createObjectURL(referenceImage);
+        setReferenceImageUrl(url);
+        return () => URL.revokeObjectURL(url);
+    } else {
+        setReferenceImageUrl(null);
+    }
+  }, [referenceImage]);
 
   const handleFileChange = (files: FileList | null) => {
     if (files && files[0]) {

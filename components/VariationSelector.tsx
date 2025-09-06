@@ -16,9 +16,11 @@ const ImagePreview: React.FC<{ file: File; onSelect: () => void; }> = ({ file, o
     const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
     useEffect(() => {
-        const url = URL.createObjectURL(file);
-        setObjectUrl(url);
-        return () => URL.revokeObjectURL(url);
+        if (file) {
+            const url = URL.createObjectURL(file);
+            setObjectUrl(url);
+            return () => URL.revokeObjectURL(url);
+        }
     }, [file]);
 
     if (!objectUrl) {

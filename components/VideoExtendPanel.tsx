@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface VideoExtendPanelProps {
   lastFrame: File;
@@ -14,6 +14,7 @@ interface VideoExtendPanelProps {
 
 const VideoExtendPanel: React.FC<VideoExtendPanelProps> = ({ lastFrame, onGenerate, onCancel, isLoading }) => {
   const [prompt, setPrompt] = useState('');
+  const [frameUrl, setFrameUrl] = useState('');
 
   const presets = [
     'Continue the action smoothly.',
@@ -28,14 +29,13 @@ const VideoExtendPanel: React.FC<VideoExtendPanelProps> = ({ lastFrame, onGenera
     }
   };
 
-  const frameUrl = useMemo(() => {
-    return URL.createObjectURL(lastFrame);
-  }, [lastFrame]);
-
   useEffect(() => {
-    // Cleanup object URL when component unmounts or file changes
-    return () => URL.revokeObjectURL(frameUrl);
-  }, [frameUrl]);
+    if (lastFrame) {
+        const url = URL.createObjectURL(lastFrame);
+        setFrameUrl(url);
+        return () => URL.revokeObjectURL(url);
+    }
+  }, [lastFrame]);
 
   return (
     <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex flex-col gap-4 animate-fade-in backdrop-blur-sm">
@@ -46,7 +46,11 @@ const VideoExtendPanel: React.FC<VideoExtendPanelProps> = ({ lastFrame, onGenera
       
       <div className="flex justify-center my-4">
         <div className="w-48 h-auto rounded-lg overflow-hidden shadow-lg border-2 border-gray-600">
-            <img src={frameUrl} alt="Last frame of previous video" className="w-full h-full object-cover" />
+            {frameUrl ? (
+              <img src={frameUrl} alt="Last frame of previous video" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full aspect-video bg-gray-900" />
+            )}
             <p className="text-xs text-center bg-gray-900/50 py-1 text-gray-300">Starting Frame</p>
         </div>
       </div>
