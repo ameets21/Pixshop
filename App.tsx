@@ -7,7 +7,16 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import ReactCrop, { type Crop, type PixelCrop } from 'react-image-crop';
 import JSZip from 'jszip';
-import { generateEditedImage, generateFilteredImage, generateAdjustedImage, generateVideoFromImage, generateReferencedImage } from './services/geminiService';
+import { 
+  generateEditedImageVariations,
+  generateFilteredImageVariations,
+  generateAdjustedImageVariations,
+  generateVideoFromImage, 
+  generateReferencedImageVariations,
+  generateConsistentCharacterVariations,
+  generateFilteredImage,
+  generateAdjustedImage
+} from './services/geminiService';
 import Header from './components/Header';
 import Spinner from './components/Spinner';
 import FilterPanel from './components/FilterPanel';
@@ -15,7 +24,10 @@ import AdjustmentPanel from './components/AdjustmentPanel';
 import CropPanel from './components/CropPanel';
 import ImageToVideoPanel from './components/ImageToVideoPanel';
 import ReferencePanel, { type ReferenceSettings } from './components/ReferencePanel';
+import CharacterPanel from './components/CharacterPanel';
 import BatchThumbnailTray from './components/BatchThumbnailTray';
+import VariationSelector from './components/VariationSelector';
+import VideoExtendPanel from './components/VideoExtendPanel';
 import { UndoIcon, RedoIcon, EyeIcon } from './components/icons';
 import StartScreen from './components/StartScreen';
 
@@ -36,7 +48,50 @@ const dataURLtoFile = (dataurl: string, filename: string): File => {
     return new File([u8arr], filename, {type:mime});
 }
 
-type Tab = 'retouch' | 'adjust' | 'filters' | 'crop' | 'video' | 'reference';
+// Helper to extract the last frame of a video
+const extractLastFrame = (videoBlob: Blob): Promise<File> => {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+
+        if (!ctx) return reject(new Error('Canvas context not available'));
+        
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'metadata';
+
+        const revokeUrl = () => URL.revokeObjectURL(video.src);
+
+        video.onloadedmetadata = () => {
+            // Seek to a point near the end. Seeking to the exact end can be unreliable.
+            video.currentTime = video.duration > 0.1 ? video.duration - 0.1 : 0;
+        };
+
+        video.onseeked = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+            canvas.toBlob(blob => {
+                if (blob) {
+                    resolve(new File([blob], 'last-frame.png', { type: 'image/png' }));
+                } else {
+                    reject(new Error('Failed to create blob from canvas'));
+                }
+                revokeUrl();
+            }, 'image/png');
+        };
+
+        video.onerror = () => {
+            reject(new Error('Failed to load video for frame extraction.'));
+            revokeUrl();
+        };
+        
+        video.src = URL.createObjectURL(videoBlob);
+    });
+};
+
+type Tab = 'retouch' | 'adjust' | 'filters' | 'crop' | 'video' | 'reference' | 'character';
 type BatchImage = { original: File; edited: File; };
 
 const App: React.FC = () => {
@@ -62,7 +117,16 @@ const App: React.FC = () => {
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [aspect, setAspect] = useState<number | undefined>();
   const [isComparing, setIsComparing] = useState<boolean>(false);
+  
+  // Variation state
+  const [variationImages, setVariationImages] = useState<File[] | null>(null);
+  const [pendingAction, setPendingAction] = useState<((selectedImage: File) => void) | null>(null);
+
+  // Video state
   const [videoResult, setVideoResult] = useState<{ url: string; blob: Blob } | null>(null);
+  const [isExtendingVideo, setIsExtendingVideo] = useState(false);
+  const [videoLastFrame, setVideoLastFrame] = useState<File | null>(null);
+
   const imgRef = useRef<HTMLImageElement>(null);
 
   const currentImage = isBatchMode ? batchImages[activeIndex]?.edited : history[historyIndex];
@@ -139,59 +203,56 @@ const App: React.FC = () => {
     setActiveTab('adjust'); // Default to a batch-friendly tab
   }, []);
 
-  const handleGenerate = useCallback(async () => {
+  const handleGenerateVariations = useCallback(async (generator: () => Promise<string[]>) => {
     if (!currentImage) return;
-    if (!prompt.trim() || !editHotspot) return;
-
     setIsLoading(true);
-    setLoadingMessage('AI is working its magic...');
+    setLoadingMessage('Generating variations...');
     setError(null);
-    
     try {
-        const editedImageUrl = await generateEditedImage(currentImage, prompt, editHotspot);
-        addImageToHistory(dataURLtoFile(editedImageUrl, `edited-${Date.now()}.png`));
-        setEditHotspot(null);
-        setDisplayHotspot(null);
+      const variationUrls = await generator();
+      const variationFiles = variationUrls.map((url, i) => dataURLtoFile(url, `variation-${i}-${Date.now()}.png`));
+      setVariationImages(variationFiles);
+      setPendingAction(() => (selectedImage: File) => addImageToHistory(selectedImage));
     } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
-  }, [currentImage, prompt, editHotspot, addImageToHistory]);
+  }, [currentImage, addImageToHistory]);
+
+  const handleGenerate = useCallback(async () => {
+    if (!prompt.trim() || !editHotspot) return;
+    handleGenerateVariations(() => generateEditedImageVariations(currentImage, prompt, editHotspot, 4));
+  }, [currentImage, prompt, editHotspot, handleGenerateVariations]);
   
   const handleApplyFilter = useCallback(async (filterPrompt: string) => {
-    if (!currentImage) return;
-    
-    setIsLoading(true);
-    setLoadingMessage('Applying filter...');
-    setError(null);
-    
-    try {
-        const filteredImageUrl = await generateFilteredImage(currentImage, filterPrompt);
-        addImageToHistory(dataURLtoFile(filteredImageUrl, `filtered-${Date.now()}.png`));
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
-        setIsLoading(false);
-    }
-  }, [currentImage, addImageToHistory]);
+    handleGenerateVariations(() => generateFilteredImageVariations(currentImage, filterPrompt, 4));
+  }, [currentImage, handleGenerateVariations]);
   
   const handleApplyAdjustment = useCallback(async (adjustmentPrompt: string) => {
-    if (!currentImage) return;
-    
-    setIsLoading(true);
-    setLoadingMessage('Applying adjustment...');
-    setError(null);
-    
-    try {
-        const adjustedImageUrl = await generateAdjustedImage(currentImage, adjustmentPrompt);
-        addImageToHistory(dataURLtoFile(adjustedImageUrl, `adjusted-${Date.now()}.png`));
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
-        setIsLoading(false);
+    handleGenerateVariations(() => generateAdjustedImageVariations(currentImage, adjustmentPrompt, 4));
+  }, [currentImage, handleGenerateVariations]);
+  
+  const handleApplyReference = useCallback(async (settings: ReferenceSettings) => {
+    handleGenerateVariations(() => generateReferencedImageVariations(currentImage, settings, 4));
+  }, [currentImage, handleGenerateVariations]);
+  
+  const handleGenerateCharacter = useCallback(async (referenceImages: File[], characterPrompt: string) => {
+    handleGenerateVariations(() => generateConsistentCharacterVariations(referenceImages, characterPrompt, 4));
+  }, [handleGenerateVariations]);
+
+  const handleVariationSelected = useCallback((selectedImage: File) => {
+    if (pendingAction) {
+      pendingAction(selectedImage);
     }
-  }, [currentImage, addImageToHistory]);
+    setVariationImages(null);
+    setPendingAction(null);
+  }, [pendingAction]);
+
+  const handleVariationCancel = useCallback(() => {
+    setVariationImages(null);
+    setPendingAction(null);
+  }, []);
 
   const handleBatchApply = useCallback(async (prompt: string, type: 'filter' | 'adjustment') => {
     setIsLoading(true);
@@ -203,11 +264,9 @@ const App: React.FC = () => {
     for (let i = 0; i < newBatchImages.length; i++) {
         try {
             setLoadingMessage(`Applying to image ${i + 1} of ${batchImages.length}...`);
-            // We use the original image of the current item as the base
             const resultUrl = await operation(newBatchImages[i].original, prompt);
             const newFile = dataURLtoFile(resultUrl, `${type}-${i}-${Date.now()}.png`);
             newBatchImages[i] = { ...newBatchImages[i], edited: newFile };
-            // Update state incrementally to show progress
             setBatchImages([...newBatchImages]);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'An unknown error occurred.';
@@ -220,23 +279,6 @@ const App: React.FC = () => {
     setLoadingMessage('Batch apply complete!');
     setTimeout(() => setIsLoading(false), 1000);
   }, [batchImages]);
-
-  const handleApplyReference = useCallback(async (settings: ReferenceSettings) => {
-    if (!currentImage) return;
-    
-    setIsLoading(true);
-    setLoadingMessage('Applying reference image...');
-    setError(null);
-    
-    try {
-        const referencedImageUrl = await generateReferencedImage(currentImage, settings);
-        addImageToHistory(dataURLtoFile(referencedImageUrl, `referenced-${Date.now()}.png`));
-    } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
-        setIsLoading(false);
-    }
-  }, [currentImage, addImageToHistory]);
 
   const handleApplyCrop = useCallback(() => {
     if (!completedCrop || !imgRef.current) return;
@@ -257,15 +299,19 @@ const App: React.FC = () => {
 
   }, [completedCrop, addImageToHistory]);
 
-  const handleGenerateVideo = useCallback(async (videoPrompt: string) => {
-    if (!currentImage) return;
+  const handleGenerateVideo = useCallback(async (videoPrompt: string, baseImage?: File) => {
+    const imageToProcess = baseImage || currentImage;
+    if (!imageToProcess) return;
     
     setIsLoading(true);
     setLoadingMessage('Generating video... This can take several minutes.');
     setError(null);
+    // Exit any special UI states
+    setIsExtendingVideo(false);
+    setVideoLastFrame(null);
     
     try {
-        const videoBlob = await generateVideoFromImage(currentImage, videoPrompt);
+        const videoBlob = await generateVideoFromImage(imageToProcess, videoPrompt);
         setVideoResult({ url: URL.createObjectURL(videoBlob), blob: videoBlob });
     } catch (err) {
         setError(err instanceof Error ? err.message : 'An unknown error occurred.');
@@ -278,6 +324,23 @@ const App: React.FC = () => {
     if (videoResult) {
       URL.revokeObjectURL(videoResult.url);
       setVideoResult(null);
+    }
+    setIsExtendingVideo(false);
+    setVideoLastFrame(null);
+  }, [videoResult]);
+
+  const handleStartExtendVideo = useCallback(async () => {
+    if (!videoResult) return;
+    setIsLoading(true);
+    setLoadingMessage('Preparing video for extension...');
+    try {
+      const frameFile = await extractLastFrame(videoResult.blob);
+      setVideoLastFrame(frameFile);
+      setIsExtendingVideo(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not extract frame from video.');
+    } finally {
+      setIsLoading(false);
     }
   }, [videoResult]);
 
@@ -320,7 +383,6 @@ const App: React.FC = () => {
     try {
         const zip = new JSZip();
         batchImages.forEach((img, index) => {
-            // Use the edited file for zipping
             zip.file(`edited-${index}-${img.edited.name}`, img.edited);
         });
         const blob = await zip.generateAsync({ type: 'blob' });
@@ -370,7 +432,24 @@ const App: React.FC = () => {
       );
     }
     if (!currentImageUrl) return <StartScreen onFileSelect={handleFileSelect} />;
+
+    if (variationImages) {
+        return <VariationSelector images={variationImages} onSelect={handleVariationSelected} onCancel={handleVariationCancel} />;
+    }
     
+    if (isExtendingVideo && videoLastFrame) {
+      return (
+        <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-6 animate-fade-in">
+          <VideoExtendPanel 
+            lastFrame={videoLastFrame}
+            onGenerate={(prompt) => handleGenerateVideo(prompt, videoLastFrame)}
+            onCancel={handleBackToEditor}
+            isLoading={isLoading}
+          />
+        </div>
+      );
+    }
+
     if (videoResult) {
       return (
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-6 animate-fade-in">
@@ -387,13 +466,22 @@ const App: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-4 mt-4">
             <button
               onClick={handleDownload}
-              className="bg-gradient-to-br from-green-600 to-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-green-500/20 hover:shadow-xl hover:shadow-green-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-lg"
+              className="bg-gradient-to-br from-green-600 to-green-500 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-green-500/20 hover:shadow-xl hover:shadow-green-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-lg disabled:opacity-50"
+              disabled={isLoading}
             >
               Download Video
             </button>
             <button
+              onClick={handleStartExtendVideo}
+              className="bg-gradient-to-br from-purple-600 to-indigo-500 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-lg disabled:opacity-50"
+              disabled={isLoading}
+            >
+              Create Follow-up Video
+            </button>
+            <button
               onClick={handleBackToEditor}
-              className="bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition-colors hover:bg-gray-500"
+              className="bg-gray-600 text-white font-bold py-3 px-8 rounded-lg transition-colors hover:bg-gray-500 disabled:opacity-50"
+              disabled={isLoading}
             >
               Back to Editor
             </button>
@@ -402,7 +490,7 @@ const App: React.FC = () => {
       );
     }
 
-    const availableTabs: Tab[] = isBatchMode ? ['adjust', 'filters'] : ['retouch', 'crop', 'adjust', 'filters', 'video', 'reference'];
+    const availableTabs: Tab[] = isBatchMode ? ['adjust', 'filters'] : ['retouch', 'crop', 'adjust', 'filters', 'video', 'reference', 'character'];
 
     return (
       <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-6 animate-fade-in">
@@ -437,7 +525,7 @@ const App: React.FC = () => {
                         disabled={isLoading || !prompt.trim() || !editHotspot}
                         className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-base disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none"
                     >
-                        Apply
+                        Generate Variations
                     </button>
                 </div>
                 {editHotspot && <p className="text-xs text-center text-gray-400 animate-fade-in">Selected spot: ({editHotspot.x}, {editHotspot.y}). Ready to apply your edit.</p>}
@@ -448,6 +536,7 @@ const App: React.FC = () => {
             {activeTab === 'filters' && <FilterPanel onApplyFilter={handleApplyFilter} isLoading={isLoading} isBatchMode={isBatchMode} onBatchApply={handleBatchApply} />}
             {activeTab === 'video' && <ImageToVideoPanel onGenerateVideo={handleGenerateVideo} isLoading={isLoading} />}
             {activeTab === 'reference' && <ReferencePanel onApplyReference={handleApplyReference} isLoading={isLoading} />}
+            {activeTab === 'character' && <CharacterPanel baseImage={currentImage} onGenerateCharacter={handleGenerateCharacter} isLoading={isLoading} />}
         </div>
         
         <div className="flex flex-wrap items-center justify-center gap-3 mt-6">

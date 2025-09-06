@@ -80,7 +80,7 @@ export const generateEditedImage = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     
     const originalImagePart = await fileToPart(originalImage);
-    const prompt = `You are an expert photo editor AI. Your task is to perform a natural, localized edit on the provided image based on the user's request.
+    const prompt = `You are an expert photo editor AI. Your task is to perform a natural, localized edit on the provided image based on the user's request. Create a unique and creative variation for this edit.
 User Request: "${userPrompt}"
 Edit Location: Focus on the area around pixel coordinates (x: ${hotspot.x}, y: ${hotspot.y}).
 
@@ -106,6 +106,19 @@ Output: Return ONLY the final edited image. Do not return text.`;
 };
 
 /**
+ * Generates multiple variations of an edited image.
+ */
+export const generateEditedImageVariations = async (
+    originalImage: File,
+    userPrompt: string,
+    hotspot: { x: number, y: number },
+    numVariations: number = 4,
+): Promise<string[]> => {
+    const promises = Array.from({ length: numVariations }, () => generateEditedImage(originalImage, userPrompt, hotspot));
+    return Promise.all(promises);
+};
+
+/**
  * Generates an image with a filter applied using generative AI.
  * @param originalImage The original image file.
  * @param filterPrompt The text prompt describing the desired filter.
@@ -119,7 +132,7 @@ export const generateFilteredImage = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     
     const originalImagePart = await fileToPart(originalImage);
-    const prompt = `You are an expert photo editor AI. Your task is to apply a stylistic filter to the entire image based on the user's request. Do not change the composition or content, only apply the style.
+    const prompt = `You are an expert photo editor AI. Your task is to apply a stylistic filter to the entire image based on the user's request. Do not change the composition or content, only apply the style. Create a unique and creative variation of this filter.
 Filter Request: "${filterPrompt}"
 
 Safety & Ethics Policy:
@@ -140,6 +153,18 @@ Output: Return ONLY the final filtered image. Do not return text.`;
 };
 
 /**
+ * Generates multiple variations of a filtered image.
+ */
+export const generateFilteredImageVariations = async (
+    originalImage: File,
+    filterPrompt: string,
+    numVariations: number = 4,
+): Promise<string[]> => {
+    const promises = Array.from({ length: numVariations }, () => generateFilteredImage(originalImage, filterPrompt));
+    return Promise.all(promises);
+};
+
+/**
  * Generates an image with a global adjustment applied using generative AI.
  * @param originalImage The original image file.
  * @param adjustmentPrompt The text prompt describing the desired adjustment.
@@ -153,7 +178,7 @@ export const generateAdjustedImage = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     
     const originalImagePart = await fileToPart(originalImage);
-    const prompt = `You are an expert photo editor AI. Your task is to perform a natural, global adjustment to the entire image based on the user's request.
+    const prompt = `You are an expert photo editor AI. Your task is to perform a natural, global adjustment to the entire image based on the user's request. Create a unique and creative variation of this adjustment.
 User Request: "${adjustmentPrompt}"
 
 Editing Guidelines:
@@ -178,6 +203,18 @@ Output: Return ONLY the final adjusted image. Do not return text.`;
 };
 
 /**
+ * Generates multiple variations of an adjusted image.
+ */
+export const generateAdjustedImageVariations = async (
+    originalImage: File,
+    adjustmentPrompt: string,
+    numVariations: number = 4,
+): Promise<string[]> => {
+    const promises = Array.from({ length: numVariations }, () => generateAdjustedImage(originalImage, adjustmentPrompt));
+    return Promise.all(promises);
+}
+
+/**
  * Generates an edited image using a reference image and various settings.
  * @param originalImage The source image file to be edited.
  * @param settings An object containing the reference image and editing parameters.
@@ -193,14 +230,14 @@ export const generateReferencedImage = async (
     const originalImagePart = await fileToPart(originalImage);
     const referenceImagePart = await fileToPart(settings.referenceImage);
 
-    const prompt = `You are an expert photo editor AI. Your task is to edit the 'source image' (the first image) using the 'reference image' (the second image) according to the user's instructions.
+    const prompt = `You are an expert photo editor AI. Your task is to edit the 'source image' (the first image) using the 'reference image' (the second image) according to the user's instructions. Create a unique and creative variation of this edit.
 
-User Request: "${settings.prompt}"
+User Request: "${settings.prompt || 'Apply the specified style transfer settings based on the parameters below.'}"
 
 Editing Parameters:
 - Style Influence: ${Math.round(settings.styleInfluence * 100)}% (This is the percentage of artistic style from the reference image that should be applied to the source image).
-- Color Transfer: ${settings.colorTransfer ? 'Enabled' : 'Disabled'} (If enabled, match the color palette of the reference image).
-- Blend Mode: ${settings.blendMode} (Use this logic when combining elements. 'Normal' is a standard application, while others like 'Overlay' or 'Hard Light' create more dramatic effects).
+- Color Transfer: ${Math.round(settings.colorTransfer * 100)}% (This is the percentage of the color palette from the reference image that should be applied to the source image).
+- Blend Mode: ${settings.blendMode} (Use this logic when combining elements. 'Standard' is a standard application, while others like 'Luminosity' or 'Overlay' create more dramatic effects).
 - Negative Prompt: Avoid generating the following attributes: "${settings.negativePrompt || 'None'}".
 
 Guidelines:
@@ -220,6 +257,74 @@ Output: Return ONLY the final edited image. Do not return text.`;
     
     return handleApiResponse(response, 'reference');
 };
+
+/**
+ * Generates multiple variations of a reference-based image edit.
+ */
+export const generateReferencedImageVariations = async (
+    originalImage: File,
+    settings: ReferenceSettings,
+    numVariations: number = 4,
+): Promise<string[]> => {
+    const promises = Array.from({ length: numVariations }, () => generateReferencedImage(originalImage, settings));
+    return Promise.all(promises);
+}
+
+/**
+ * Generates an image of a character based on multiple reference images.
+ * @param referenceImages An array of image files showing the character.
+ * @param userPrompt The text prompt describing the desired scene.
+ * @returns A promise that resolves to the data URL of the generated image.
+ */
+export const generateConsistentCharacter = async (
+    referenceImages: File[],
+    userPrompt: string,
+): Promise<string> => {
+    console.log(`Starting consistent character generation with ${referenceImages.length} images.`);
+    if (referenceImages.length < 2) {
+        throw new Error("Consistent character generation requires at least 2 reference images.");
+    }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    
+    const imageParts = await Promise.all(referenceImages.map(file => fileToPart(file)));
+
+    const prompt = `You are an expert character concept artist AI. Your task is to generate a new image featuring a character based on multiple reference images provided. It is crucial that you maintain consistency in the character's appearance, clothing, and overall style as depicted across ALL reference images.
+
+The reference images show the same character from different angles or in different poses. Use them to build a complete understanding of the character.
+
+User Request for the new scene: "${userPrompt}"
+
+Guidelines:
+- The generated character MUST look like the character in the reference images.
+- Pay close attention to details like facial features, hair style, and attire.
+- The new image should place the character in the scene described by the user request.
+- Create a unique and creative variation for this generation.
+
+Output: Return ONLY the final generated image. Do not return text.`;
+    const textPart = { text: prompt };
+
+    console.log('Sending images and prompt to the model...');
+    const response: GenerateContentResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image-preview',
+        contents: { parts: [...imageParts, textPart] },
+    });
+    console.log('Received response from model for character generation.', response);
+    
+    return handleApiResponse(response, 'character');
+};
+
+/**
+ * Generates multiple variations of a consistent character image.
+ */
+export const generateConsistentCharacterVariations = async (
+    referenceImages: File[],
+    userPrompt: string,
+    numVariations: number = 4,
+): Promise<string[]> => {
+    const promises = Array.from({ length: numVariations }, () => generateConsistentCharacter(referenceImages, userPrompt));
+    return Promise.all(promises);
+};
+
 
 /**
  * Generates a video from an image using generative AI.

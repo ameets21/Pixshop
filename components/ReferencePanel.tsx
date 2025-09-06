@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { UploadIcon } from './icons';
 
 export interface ReferenceSettings {
   referenceImage: File;
   prompt: string;
   styleInfluence: number;
-  colorTransfer: boolean;
+  colorTransfer: number; // Changed from boolean to number
   blendMode: string;
   negativePrompt: string;
 }
@@ -23,28 +23,35 @@ interface ReferencePanelProps {
 const ReferencePanel: React.FC<ReferencePanelProps> = ({ onApplyReference, isLoading }) => {
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [styleInfluence, setStyleInfluence] = useState(0.7);
-  const [colorTransfer, setColorTransfer] = useState(true);
-  const [blendMode, setBlendMode] = useState('Normal');
+  const [styleInfluence, setStyleInfluence] = useState(0.75);
+  const [colorTransfer, setColorTransfer] = useState(0.75); // Changed to number
+  const [blendMode, setBlendMode] = useState('Standard');
   const [negativePrompt, setNegativePrompt] = useState('');
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const referenceImageUrl = useMemo(() => {
     if (referenceImage) {
-      const url = URL.createObjectURL(referenceImage);
-      // Clean up the URL when the component unmounts or the image changes
-      return () => URL.revokeObjectURL(url);
+      return URL.createObjectURL(referenceImage);
     }
     return null;
   }, [referenceImage]);
+  
+  useEffect(() => {
+    return () => {
+      if (referenceImageUrl) {
+        URL.revokeObjectURL(referenceImageUrl);
+      }
+    };
+  }, [referenceImageUrl]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setReferenceImage(e.target.files[0]);
+  const handleFileChange = (files: FileList | null) => {
+    if (files && files[0]) {
+      setReferenceImage(files[0]);
     }
   };
 
   const handleApply = () => {
-    if (referenceImage && prompt.trim()) {
+    if (referenceImage) {
       onApplyReference({
         referenceImage,
         prompt,
@@ -56,79 +63,101 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({ onApplyReference, isLoa
     }
   };
 
-  const imageUrl = referenceImage ? URL.createObjectURL(referenceImage) : null;
+  const blendModes = ['Standard', 'Luminosity', 'Overlay'];
 
   return (
-    <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex flex-col gap-4 animate-fade-in backdrop-blur-sm">
-      <h3 className="text-lg font-semibold text-center text-gray-300">Apply Style from Reference Image</h3>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-1 flex flex-col items-center justify-center gap-2">
-            <label htmlFor="reference-upload" className={`w-full aspect-square flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer transition-colors ${referenceImage ? 'border-gray-600 hover:border-blue-500' : 'bg-white/5 border-gray-600 hover:bg-white/10 hover:border-gray-500'}`}>
-                {imageUrl ? (
-                    <img src={imageUrl} alt="Reference" className="w-full h-full object-cover rounded-lg" />
-                ) : (
-                    <div className="text-center text-gray-400 p-4">
-                        <UploadIcon className="w-8 h-8 mx-auto mb-2" />
-                        <span className="font-semibold">Upload Reference</span>
-                        <p className="text-xs">Click or drag & drop</p>
-                    </div>
-                )}
-            </label>
-            <input id="reference-upload" type="file" className="hidden" accept="image/*" onChange={handleFileChange} disabled={isLoading} />
-        </div>
-        <div className="md:col-span-2">
-            <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe what to apply from the reference image (e.g., 'Match the painterly style and warm color palette')."
-                className="w-full h-full bg-gray-800 border border-gray-600 text-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition disabled:cursor-not-allowed disabled:opacity-60 text-base min-h-[120px]"
-                disabled={isLoading}
-            />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 pt-2">
-        {/* Style Influence */}
-        <div>
-            <label htmlFor="style-influence" className="block text-sm font-medium text-gray-300 mb-1">Style Influence: <span className="font-bold text-blue-400">{Math.round(styleInfluence * 100)}%</span></label>
-            <input id="style-influence" type="range" min="0" max="1" step="0.05" value={styleInfluence} onChange={e => setStyleInfluence(parseFloat(e.target.value))} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" disabled={isLoading} />
-        </div>
-        
-        {/* Color Transfer */}
-        <div className="flex items-center justify-between">
-            <label htmlFor="color-transfer" className="text-sm font-medium text-gray-300">Color Transfer</label>
-            <button role="switch" aria-checked={colorTransfer} onClick={() => setColorTransfer(!colorTransfer)} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${colorTransfer ? 'bg-blue-600' : 'bg-gray-600'}`} disabled={isLoading}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${colorTransfer ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
-        </div>
-
-        {/* Blend Mode */}
-        <div>
-            <label htmlFor="blend-mode" className="block text-sm font-medium text-gray-300 mb-1">Blend Mode</label>
-            <select id="blend-mode" value={blendMode} onChange={e => setBlendMode(e.target.value)} className="w-full bg-gray-800 border border-gray-600 text-gray-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" disabled={isLoading}>
-                <option>Normal</option>
-                <option>Overlay</option>
-                <option>Screen</option>
-                <option>Multiply</option>
-                <option>Hard Light</option>
-            </select>
-        </div>
-
-        {/* Negative Prompt */}
-        <div>
-            <label htmlFor="negative-prompt" className="block text-sm font-medium text-gray-300 mb-1">Negative Prompt</label>
-            <input id="negative-prompt" type="text" value={negativePrompt} onChange={e => setNegativePrompt(e.target.value)} placeholder="e.g., 'blurry, deformed, text'" className="w-full bg-gray-800 border border-gray-600 text-gray-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" disabled={isLoading} />
-        </div>
+    <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-6 flex flex-col gap-4 animate-fade-in backdrop-blur-sm">
+      <div className="text-center mb-2">
+        <h3 className="text-xl font-semibold text-gray-200">Apply Style from Reference</h3>
+        <p className="text-sm text-gray-400">Upload an image and use the controls below to fine-tune the style transfer.</p>
       </div>
 
-      <button
-        onClick={handleApply}
-        className="w-full mt-4 bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-base disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none"
-        disabled={isLoading || !prompt.trim() || !referenceImage}
-      >
-        Apply with Reference
-      </button>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+        {/* Left Column */}
+        <div className="flex flex-col gap-4">
+          <label 
+            htmlFor="reference-upload"
+            className={`w-full aspect-video flex flex-col items-center justify-center border-2 border-dashed rounded-lg cursor-pointer transition-colors ${isDraggingOver ? 'border-blue-400 bg-blue-900/30' : 'border-gray-600 hover:border-gray-500 bg-gray-900/50 hover:bg-gray-900/70'}`}
+            onDragOver={(e) => { e.preventDefault(); setIsDraggingOver(true); }}
+            onDragLeave={() => setIsDraggingOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDraggingOver(false);
+              handleFileChange(e.dataTransfer.files);
+            }}
+          >
+              {referenceImageUrl ? (
+                  <img src={referenceImageUrl} alt="Reference Preview" className="w-full h-full object-cover rounded-lg" />
+              ) : (
+                  <div className="text-center text-gray-400 p-4 pointer-events-none">
+                      <UploadIcon className="w-8 h-8 mx-auto mb-2 text-gray-500" />
+                      <span className="font-semibold text-gray-300">Click to upload or drag & drop</span>
+                      <p className="text-xs mt-1">PNG, JPG, WEBP</p>
+                  </div>
+              )}
+          </label>
+          <input id="reference-upload" type="file" className="hidden" accept="image/png, image/jpeg, image/webp" onChange={(e) => handleFileChange(e.target.files)} disabled={isLoading} />
+          
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Optional: Guide the AI (e.g., 'the painterly texture')"
+            className="w-full bg-gray-900/70 border border-gray-700 text-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition disabled:cursor-not-allowed disabled:opacity-60 text-base"
+            disabled={isLoading}
+          />
+          
+          <input
+            type="text"
+            value={negativePrompt}
+            onChange={(e) => setNegativePrompt(e.target.value)}
+            placeholder="Negative prompt (e.g., 'avoid the blurry background')"
+            className="w-full bg-gray-900/70 border border-gray-700 text-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition disabled:cursor-not-allowed disabled:opacity-60 text-base"
+            disabled={isLoading}
+          />
+
+          <button
+            onClick={handleApply}
+            className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-600/20 hover:shadow-xl hover:shadow-blue-500/40 hover:bg-blue-500 active:scale-95 text-base disabled:from-blue-800 disabled:to-blue-700 disabled:bg-blue-800 disabled:shadow-none disabled:cursor-not-allowed"
+            disabled={isLoading || !referenceImage}
+          >
+            Generate Variations
+          </button>
+        </div>
+
+        {/* Right Column */}
+        <div className="flex flex-col gap-6">
+          {/* Style Influence */}
+          <div>
+            <div className="flex justify-between items-center mb-1">
+                <label htmlFor="style-influence" className="text-sm font-medium text-gray-300">Style Influence</label>
+                <span className="text-sm font-mono text-gray-300 bg-gray-900/50 px-2 py-0.5 rounded">{Math.round(styleInfluence * 100)}%</span>
+            </div>
+            <input id="style-influence" type="range" min="0" max="1" step="0.05" value={styleInfluence} onChange={e => setStyleInfluence(parseFloat(e.target.value))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500" disabled={isLoading} />
+          </div>
+
+          {/* Color Transfer */}
+          <div>
+            <div className="flex justify-between items-center mb-1">
+                <label htmlFor="color-transfer" className="text-sm font-medium text-gray-300">Color Transfer</label>
+                <span className="text-sm font-mono text-gray-300 bg-gray-900/50 px-2 py-0.5 rounded">{Math.round(colorTransfer * 100)}%</span>
+            </div>
+            <input id="color-transfer" type="range" min="0" max="1" step="0.05" value={colorTransfer} onChange={e => setColorTransfer(parseFloat(e.target.value))} className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500" disabled={isLoading} />
+          </div>
+
+          {/* Blend Mode */}
+          <div>
+             <label className="block text-sm font-medium text-gray-300 mb-2">Blend Mode</label>
+             <div className="grid grid-cols-3 gap-2">
+                {blendModes.map(mode => (
+                    <button key={mode} onClick={() => setBlendMode(mode)} disabled={isLoading} className={`px-3 py-2 text-sm font-semibold rounded-md transition-colors disabled:opacity-50 ${blendMode === mode ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' : 'bg-gray-700/60 hover:bg-gray-700 text-gray-300'}`}>
+                        {mode}
+                    </button>
+                ))}
+             </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
