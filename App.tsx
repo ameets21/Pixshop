@@ -28,7 +28,7 @@ import CharacterPanel from './components/CharacterPanel';
 import BatchThumbnailTray from './components/BatchThumbnailTray';
 import VariationSelector from './components/VariationSelector';
 import VideoExtendPanel from './components/VideoExtendPanel';
-import { UndoIcon, RedoIcon, EyeIcon } from './components/icons';
+import { UndoIcon, RedoIcon, EyeIcon, BullseyeIcon } from './components/icons';
 import StartScreen from './components/StartScreen';
 
 // Helper to convert a data URL string to a File object
@@ -113,6 +113,10 @@ const App: React.FC = () => {
   const [displayHotspot, setDisplayHotspot] = useState<{ x: number, y: number } | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('retouch');
   
+  // Retouch state
+  const [retouchBrushSize, setRetouchBrushSize] = useState<number>(30);
+
+  // Crop state
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [aspect, setAspect] = useState<number | undefined>();
@@ -221,9 +225,9 @@ const App: React.FC = () => {
   }, [currentImage, addImageToHistory]);
 
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim() || !editHotspot) return;
-    handleGenerateVariations(() => generateEditedImageVariations(currentImage, prompt, editHotspot, 4));
-  }, [currentImage, prompt, editHotspot, handleGenerateVariations]);
+    if (!prompt.trim() || !editHotspot || !currentImage) return;
+    handleGenerateVariations(() => generateEditedImageVariations(currentImage, prompt, editHotspot, retouchBrushSize, 4));
+  }, [currentImage, prompt, editHotspot, retouchBrushSize, handleGenerateVariations]);
   
   const handleApplyFilter = useCallback(async (filterPrompt: string) => {
     handleGenerateVariations(() => generateFilteredImageVariations(currentImage, filterPrompt, 4));
@@ -497,7 +501,7 @@ const App: React.FC = () => {
         <div className="relative w-full shadow-2xl rounded-xl overflow-hidden bg-black/20">
             {isLoading && <div className="absolute inset-0 bg-black/70 z-30 flex flex-col items-center justify-center gap-4 animate-fade-in"><Spinner /><p className="text-gray-300 text-center px-4">{loadingMessage}</p></div>}
             {activeTab === 'crop' && !isBatchMode ? ( <ReactCrop crop={crop} onChange={c => setCrop(c)} onComplete={c => setCompletedCrop(c)} aspect={aspect}><img ref={imgRef} src={currentImageUrl} alt="Crop" className="w-full h-auto object-contain max-h-[60vh] rounded-xl"/></ReactCrop> ) : ( <div className="relative"><img src={originalImageUrl} alt="Original" className="w-full h-auto object-contain max-h-[60vh] rounded-xl pointer-events-none" /><img ref={imgRef} src={currentImageUrl} alt="Current" onClick={handleImageClick} className={`absolute top-0 left-0 w-full h-auto object-contain max-h-[60vh] rounded-xl transition-opacity duration-200 ${isComparing ? 'opacity-0' : 'opacity-100'} ${activeTab === 'retouch' ? 'cursor-crosshair' : ''}`} /></div> )}
-            {displayHotspot && !isLoading && activeTab === 'retouch' && <div className="absolute rounded-full w-6 h-6 bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10" style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px` }}><div className="absolute inset-0 rounded-full w-6 h-6 animate-ping bg-blue-400"></div></div>}
+            {displayHotspot && !isLoading && activeTab === 'retouch' && <div className="absolute rounded-full bg-blue-500/50 border-2 border-white pointer-events-none -translate-x-1/2 -translate-y-1/2 z-10" style={{ left: `${displayHotspot.x}px`, top: `${displayHotspot.y}px`, width: `${retouchBrushSize}px`, height: `${retouchBrushSize}px` }}><div className="absolute inset-0 rounded-full animate-ping bg-blue-400"></div></div>}
         </div>
 
         {isBatchMode && <BatchThumbnailTray images={batchImages} activeIndex={activeIndex} onSelect={setActiveIndex} />}
@@ -527,6 +531,22 @@ const App: React.FC = () => {
                     >
                         Generate Variations
                     </button>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                    <BullseyeIcon className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                    <label htmlFor="brush-size" className="text-sm font-medium text-gray-300 whitespace-nowrap">Brush Size:</label>
+                    <input
+                        id="brush-size"
+                        type="range"
+                        min="10"
+                        max="100"
+                        step="1"
+                        value={retouchBrushSize}
+                        onChange={(e) => setRetouchBrushSize(parseInt(e.target.value, 10))}
+                        className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        disabled={isLoading}
+                    />
+                    <span className="text-sm font-mono text-gray-300 bg-gray-900/50 px-2 py-0.5 rounded w-16 text-center">{retouchBrushSize}px</span>
                 </div>
                 {editHotspot && <p className="text-xs text-center text-gray-400 animate-fade-in">Selected spot: ({editHotspot.x}, {editHotspot.y}). Ready to apply your edit.</p>}
               </div>

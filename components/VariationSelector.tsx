@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Spinner from './Spinner';
+import { DownloadIcon } from './icons';
 
 interface VariationSelectorProps {
   images: File[];
@@ -12,7 +13,7 @@ interface VariationSelectorProps {
   onCancel: () => void;
 }
 
-const ImagePreview: React.FC<{ file: File; onSelect: () => void; }> = ({ file, onSelect }) => {
+const Thumbnail: React.FC<{ file: File; onSelect: () => void; isActive: boolean; }> = ({ file, onSelect, isActive }) => {
     const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
     useEffect(() => {
@@ -24,50 +25,95 @@ const ImagePreview: React.FC<{ file: File; onSelect: () => void; }> = ({ file, o
     }, [file]);
 
     if (!objectUrl) {
-        return (
-            <div className="w-full aspect-square bg-gray-800 rounded-lg flex items-center justify-center">
-                <Spinner />
-            </div>
-        )
-    };
+        return <div className="w-full aspect-square bg-gray-800 rounded-lg animate-pulse"></div>;
+    }
 
     return (
-        <button 
+        <button
             onClick={onSelect}
-            className="group w-full aspect-square bg-black rounded-lg overflow-hidden transition-all duration-300 ease-in-out transform hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/30 focus:outline-none focus:ring-4 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-blue-500"
+            className={`w-full aspect-square bg-black rounded-lg overflow-hidden transition-all duration-200 ease-in-out focus:outline-none ${isActive ? 'ring-4 ring-offset-2 ring-offset-gray-900 ring-blue-500 scale-105' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+            aria-label="Select this variation"
+            aria-current={isActive}
         >
-            <img src={objectUrl} alt="Variation" className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center p-4">
-                <span className="text-white font-bold text-lg">Select this version</span>
-            </div>
+            <img src={objectUrl} alt="Variation Thumbnail" className="w-full h-full object-cover" />
         </button>
     );
 };
 
 
 const VariationSelector: React.FC<VariationSelectorProps> = ({ images, onSelect, onCancel }) => {
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [activeImageUrl, setActiveImageUrl] = useState<string | null>(null);
+  
+  const activeImageFile = images[selectedIndex];
+
+  useEffect(() => {
+      if (activeImageFile) {
+          const url = URL.createObjectURL(activeImageFile);
+          setActiveImageUrl(url);
+          return () => URL.revokeObjectURL(url);
+      }
+  }, [activeImageFile]);
+
+  const handleDownload = () => {
+      if (!activeImageFile) return;
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(activeImageFile);
+      link.download = `pixshop-variation-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+  };
+
   return (
-    <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center animate-fade-in">
-        <div className="w-full max-w-4xl mx-auto flex flex-col items-center gap-6 p-4">
-            <h2 className="text-3xl font-bold text-gray-100">Choose Your Favorite Variation</h2>
-            <p className="text-gray-400 -mt-4">The AI has generated four options. Click one to apply it.</p>
+    <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-md z-50 flex items-center justify-center animate-fade-in p-4">
+        <div className="w-full max-w-3xl mx-auto flex flex-col items-center gap-6">
+            <div className="text-center">
+                <h2 className="text-3xl font-bold text-gray-100">Choose Your Favorite Variation</h2>
+                <p className="text-gray-400 mt-1">Click a thumbnail to preview, then select or download.</p>
+            </div>
             
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+            <div className="w-full max-w-xl aspect-square relative bg-black/30 rounded-lg shadow-2xl flex items-center justify-center">
+              {activeImageUrl ? (
+                <img src={activeImageUrl} alt="Selected variation" className="w-full h-full object-contain rounded-lg" />
+              ) : (
+                <Spinner />
+              )}
+            </div>
+            
+            <div className="w-full max-w-xl grid grid-cols-4 gap-4">
                 {images.map((image, index) => (
-                    <ImagePreview 
+                    <Thumbnail 
                         key={index}
                         file={image}
-                        onSelect={() => onSelect(image)}
+                        onSelect={() => setSelectedIndex(index)}
+                        isActive={index === selectedIndex}
                     />
                 ))}
             </div>
 
-            <button
-              onClick={onCancel}
-              className="mt-6 bg-gray-700/80 border border-gray-600 text-gray-200 font-semibold py-3 px-8 rounded-lg transition-colors hover:bg-gray-700"
-            >
-              Cancel
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+              <button
+                onClick={onCancel}
+                className="bg-gray-700/80 border border-gray-600 text-gray-200 font-semibold py-3 px-6 rounded-lg transition-colors hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDownload}
+                className="flex items-center justify-center gap-2 bg-indigo-600/80 border border-indigo-500 text-gray-100 font-semibold py-3 px-6 rounded-lg transition-colors hover:bg-indigo-600"
+              >
+                <DownloadIcon className="w-5 h-5" />
+                Download
+              </button>
+               <button
+                onClick={() => onSelect(activeImageFile)}
+                className="bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95"
+              >
+                Select this version
+              </button>
+            </div>
         </div>
     </div>
   );

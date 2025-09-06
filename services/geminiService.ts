@@ -64,25 +64,36 @@ const handleApiResponse = (
     throw new Error(errorMessage);
 };
 
+const getBrushSizeDescription = (size: number): string => {
+    if (size <= 20) return 'very small';
+    if (size <= 40) return 'small';
+    if (size <= 70) return 'medium';
+    if (size <= 100) return 'large';
+    return 'very large';
+};
+
 /**
  * Generates an edited image using generative AI based on a text prompt and a specific point.
  * @param originalImage The original image file.
  * @param userPrompt The text prompt describing the desired edit.
  * @param hotspot The {x, y} coordinates on the image to focus the edit.
+ * @param brushSize The radius of the edit area in pixels.
  * @returns A promise that resolves to the data URL of the edited image.
  */
 export const generateEditedImage = async (
     originalImage: File,
     userPrompt: string,
-    hotspot: { x: number, y: number }
+    hotspot: { x: number, y: number },
+    brushSize: number
 ): Promise<string> => {
-    console.log('Starting generative edit at:', hotspot);
+    console.log('Starting generative edit at:', hotspot, `with brush size: ${brushSize}`);
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     
     const originalImagePart = await fileToPart(originalImage);
+    const sizeDescription = getBrushSizeDescription(brushSize);
     const prompt = `You are an expert photo editor AI. Your task is to perform a natural, localized edit on the provided image based on the user's request. Create a unique and creative variation for this edit.
 User Request: "${userPrompt}"
-Edit Location: Focus on the area around pixel coordinates (x: ${hotspot.x}, y: ${hotspot.y}).
+Edit Location: Focus on a ${sizeDescription} area centered at pixel coordinates (x: ${hotspot.x}, y: ${hotspot.y}).
 
 Editing Guidelines:
 - The edit must be realistic and blend seamlessly with the surrounding area.
@@ -112,9 +123,10 @@ export const generateEditedImageVariations = async (
     originalImage: File,
     userPrompt: string,
     hotspot: { x: number, y: number },
+    brushSize: number,
     numVariations: number = 4,
 ): Promise<string[]> => {
-    const promises = Array.from({ length: numVariations }, () => generateEditedImage(originalImage, userPrompt, hotspot));
+    const promises = Array.from({ length: numVariations }, () => generateEditedImage(originalImage, userPrompt, hotspot, brushSize));
     return Promise.all(promises);
 };
 
