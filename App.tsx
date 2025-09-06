@@ -12,7 +12,7 @@ import {
   generateFilteredImageVariations,
   generateAdjustedImageVariations,
   generateVideoFromImage, 
-  generateReferencedImageVariations,
+  generateReferencedImage,
   generateConsistentCharacterVariations,
   generateFilteredImage,
   generateAdjustedImage
@@ -238,8 +238,20 @@ const App: React.FC = () => {
   }, [currentImage, handleGenerateVariations]);
   
   const handleApplyReference = useCallback(async (settings: ReferenceSettings) => {
-    handleGenerateVariations(() => generateReferencedImageVariations(currentImage, settings, 4));
-  }, [currentImage, handleGenerateVariations]);
+    if (!currentImage) return;
+    setIsLoading(true);
+    setLoadingMessage('Applying reference style...');
+    setError(null);
+    try {
+      const resultUrl = await generateReferencedImage(currentImage, settings);
+      const newFile = dataURLtoFile(resultUrl, `referenced-${Date.now()}.png`);
+      addImageToHistory(newFile);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentImage, addImageToHistory]);
   
   const handleGenerateCharacter = useCallback(async (referenceImages: File[], characterPrompt: string) => {
     handleGenerateVariations(() => generateConsistentCharacterVariations(referenceImages, characterPrompt, 4));

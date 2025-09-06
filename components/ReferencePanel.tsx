@@ -118,7 +118,7 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({ onApplyReference, isLoa
             className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-600/20 hover:shadow-xl hover:shadow-blue-500/40 hover:bg-blue-500 active:scale-95 text-base disabled:from-blue-800 disabled:to-blue-700 disabled:bg-blue-800 disabled:shadow-none disabled:cursor-not-allowed"
             disabled={isLoading || !referenceImage}
           >
-            Generate Variations
+            Apply Style
           </button>
         </div>
 

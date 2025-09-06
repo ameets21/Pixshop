@@ -271,18 +271,6 @@ Output: Return ONLY the final edited image. Do not return text.`;
 };
 
 /**
- * Generates multiple variations of a reference-based image edit.
- */
-export const generateReferencedImageVariations = async (
-    originalImage: File,
-    settings: ReferenceSettings,
-    numVariations: number = 4,
-): Promise<string[]> => {
-    const promises = Array.from({ length: numVariations }, () => generateReferencedImage(originalImage, settings));
-    return Promise.all(promises);
-}
-
-/**
  * Generates an image of a character based on multiple reference images.
  * @param referenceImages An array of image files showing the character.
  * @param userPrompt The text prompt describing the desired scene.
