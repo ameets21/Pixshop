@@ -7,10 +7,12 @@ import React, { useState } from 'react';
 
 interface FilterPanelProps {
   onApplyFilter: (prompt: string) => void;
+  onBatchApply?: (prompt: string, type: 'filter') => void;
   isLoading: boolean;
+  isBatchMode?: boolean;
 }
 
-const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) => {
+const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, onBatchApply, isLoading, isBatchMode }) => {
   const [selectedPresetPrompt, setSelectedPresetPrompt] = useState<string | null>(null);
   const [customPrompt, setCustomPrompt] = useState('');
 
@@ -36,6 +38,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) =
   const handleApply = () => {
     if (activePrompt) {
       onApplyFilter(activePrompt);
+    }
+  };
+
+  const handleBatch = () => {
+    if (activePrompt && onBatchApply) {
+      onBatchApply(activePrompt, 'filter');
     }
   };
 
@@ -66,14 +74,23 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ onApplyFilter, isLoading }) =
       />
       
       {activePrompt && (
-        <div className="animate-fade-in flex flex-col gap-4 pt-2">
-          <button
-            onClick={handleApply}
-            className="w-full bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-base disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none"
-            disabled={isLoading || !activePrompt.trim()}
-          >
-            Apply Filter
-          </button>
+        <div className="animate-fade-in flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+                onClick={handleApply}
+                className="w-full bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-base disabled:from-blue-800 disabled:to-blue-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none"
+                disabled={isLoading || !activePrompt.trim()}
+            >
+                {isBatchMode ? 'Apply to Current' : 'Apply Filter'}
+            </button>
+            {isBatchMode && onBatchApply && (
+                <button
+                    onClick={handleBatch}
+                    className="w-full bg-gradient-to-br from-purple-600 to-indigo-500 text-white font-bold py-4 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-indigo-500/20 hover:shadow-xl hover:shadow-indigo-500/40 hover:-translate-y-px active:scale-95 active:shadow-inner text-base disabled:from-indigo-800 disabled:to-indigo-700 disabled:shadow-none disabled:cursor-not-allowed disabled:transform-none"
+                    disabled={isLoading || !activePrompt.trim()}
+                >
+                    Apply to All
+                </button>
+            )}
         </div>
       )}
     </div>
